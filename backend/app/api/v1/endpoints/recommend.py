@@ -56,6 +56,7 @@ def get_recommendations(
             company=r["company"],
             content_score=r["content_score"],
             collaborative_score=r["collaborative_score"],
+            affirmative_score=r["affirmative_score"],
             final_score=r["final_score"],
             explanation=ExplanationResult(**r["explanation"]),
         )

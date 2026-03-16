@@ -7,6 +7,7 @@ import joblib
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.ml.affirmative import AffirmativeScorer
 from app.ml.collaborative_filter import CollaborativeFilter
 from app.ml.content_filter import ContentFilter
 from app.models.application import Application, ApplicationStatus
@@ -19,17 +20,19 @@ _COLLABORATIVE_FILTER_PATH = os.path.join(_MODEL_DIR, "collaborative_filter.jobl
 
 
 class RecommendationEngine:
-    """Hybrid recommendation engine (content + collaborative for Phase 3).
+    """Hybrid recommendation engine (content + collaborative + affirmative).
 
     On initialisation it either loads previously trained models from disk
     or trains fresh ones against the current database state.
 
-    Affirmative-action layer is stubbed and will be integrated in Phase 4.
+    The AffirmativeScorer is rule-based and requires no training — it is
+    instantiated directly on each engine creation.
     """
 
     def __init__(self, db: Session) -> None:
         self.db = db
         self.content_filter, self.collaborative_filter = self.load_or_train(db)
+        self.affirmative_scorer = AffirmativeScorer()
 
     # ------------------------------------------------------------------
     # Training / persistence
@@ -49,8 +52,6 @@ class RecommendationEngine:
 
     def retrain(self, db: Session):
         """Force retrain from current DB data and persist."""
-        # Remove stale model files before retraining so we never load
-        # a model fitted on IDs that no longer exist in the DB.
         for path in (_CONTENT_FILTER_PATH, _COLLABORATIVE_FILTER_PATH):
             if os.path.exists(path):
                 os.remove(path)
@@ -83,8 +84,8 @@ class RecommendationEngine:
         """Query Application table and return interaction dicts.
 
         score mapping:
-            selected → 1.0
-            everything else (pending, under_review, rejected) → 0.5
+            selected -> 1.0
+            everything else (pending, under_review, rejected) -> 0.5
         """
         applications = db.query(Application).all()
         data: List[Dict] = []
@@ -108,12 +109,12 @@ class RecommendationEngine:
         """Return top-N ranked internships for a student.
 
         Blending formula:
-            final = (CONTENT_WEIGHT × content) +
-                    (COLLABORATIVE_WEIGHT × collaborative) +
-                    (AFFIRMATIVE_WEIGHT × 0.0)        ← stub
+            final = (CONTENT_WEIGHT x content) +
+                    (COLLABORATIVE_WEIGHT x collaborative) +
+                    (AFFIRMATIVE_WEIGHT x affirmative)
 
         Cold-start: when collaborative returns no data for a student,
-        we re-normalise so that content weight fills the full score
+        re-normalise so that content weight fills the full score
         range instead of leaving the collaborative portion as zero.
         """
         skills = [s.lower() for s in student.skills] if student.skills else []
@@ -141,13 +142,30 @@ class RecommendationEngine:
             w_content = settings.CONTENT_WEIGHT + settings.COLLABORATIVE_WEIGHT
             w_collab = 0.0
 
+        # Pre-fetch all active internships for affirmative scoring
+        all_internship_ids = list(content_map.keys())
+        internships_for_aff = (
+            self.db.query(Internship)
+            .filter(Internship.id.in_(all_internship_ids))
+            .all()
+        )
+        internship_lookup: Dict[int, Internship] = {
+            i.id: i for i in internships_for_aff
+        }
+
         # Use content_map as the authoritative set of internship IDs —
         # it covers every active internship.
         blended: List[Dict] = []
         for iid in content_map:
             c_score = content_map[iid]
             co_score = collab_map.get(iid, 0.0)
-            aff_score = 0.0  # Phase 4 stub
+
+            # Affirmative score — rule-based, no training needed
+            internship_obj = internship_lookup.get(iid)
+            if internship_obj is not None:
+                aff_score = self.affirmative_scorer.score(student, internship_obj)
+            else:
+                aff_score = 0.0
 
             final = (
                 w_content * c_score
@@ -158,19 +176,20 @@ class RecommendationEngine:
                 "internship_id": iid,
                 "content_score": c_score,
                 "collaborative_score": co_score,
+                "affirmative_score": aff_score,
                 "final_score": final,
             })
 
         blended.sort(key=lambda r: r["final_score"], reverse=True)
 
-        # Build an id→internship lookup for the top results
+        # Build an id->internship lookup for the top results
         top_ids = [r["internship_id"] for r in blended[:top_n]]
-        internships = (
-            self.db.query(Internship)
-            .filter(Internship.id.in_(top_ids))
-            .all()
-        )
-        lookup: Dict[int, Internship] = {i.id: i for i in internships}
+        # Re-use already-fetched internship objects
+        lookup: Dict[int, Internship] = {
+            iid: internship_lookup[iid]
+            for iid in top_ids
+            if iid in internship_lookup
+        }
 
         results: List[Dict] = []
         for entry in blended[:top_n]:
@@ -187,6 +206,7 @@ class RecommendationEngine:
                 "company": internship.company,
                 "content_score": round(entry["content_score"], 4),
                 "collaborative_score": round(entry["collaborative_score"], 4),
+                "affirmative_score": round(entry["affirmative_score"], 4),
                 "final_score": round(entry["final_score"], 4),
                 "explanation": {
                     "matched_skills": explanation["matched_skills"],
@@ -196,12 +216,3 @@ class RecommendationEngine:
             })
 
         return results
-
-    # ------------------------------------------------------------------
-    # Stub layer (Phase 4)
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _affirmative_score(student: Student, internship_id: int) -> float:
-        """Stub — returns 0.0 until affirmative action layer is implemented."""
-        return 0.0

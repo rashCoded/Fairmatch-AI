@@ -29,8 +29,10 @@ class ContentFilter:
     def fit(self, internships: List[Internship]) -> "ContentFilter":
         """Build TF-IDF matrix from internship required_skills."""
         self._internship_ids = [i.id for i in internships]
+        # Normalise to lowercase at storage time so that explain()
+        # comparisons are always case-insensitive.
         self._internship_skills = [
-            list(i.required_skills) if i.required_skills else []
+            [s.lower() for s in i.required_skills] if i.required_skills else []
             for i in internships
         ]
         self._matrix = self.vectorizer.fit_transform(self._internship_skills)
@@ -91,7 +93,8 @@ class ContentFilter:
             }
 
         idx = self._internship_ids.index(internship_id)
-        required = {s.lower() for s in self._internship_skills[idx]}
+        # _internship_skills is already lowercased from fit()
+        required = set(self._internship_skills[idx])
         student = {s.lower() for s in student_skills}
 
         matched = sorted(required & student)

@@ -5,4 +5,4 @@ from app.models.user import User  # noqa
 from app.models.student import Student  # noqa
 from app.models.internship import Internship  # noqa
 from app.models.application import Application  # noqa
-# Add any other models here as they are created
+from app.models.audit_log import AuditLog  # noqa

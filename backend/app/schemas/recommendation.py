@@ -12,6 +12,7 @@ class RecommendationResult(BaseModel):
     title: str
     company: str
     content_score: float
+    collaborative_score: float
     final_score: float
     explanation: ExplanationResult
 

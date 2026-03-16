@@ -1,12 +1,12 @@
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from faker import Faker
 from sqlalchemy.orm import Session
 
 from app.core.security import get_password_hash
 from app.db.database import SessionLocal
-from app.models.application import Application  # noqa: F401
+from app.models.application import Application, ApplicationStatus
 from app.models.internship import Internship
 from app.models.student import Student
 from app.models.user import User, UserRole
@@ -237,6 +237,7 @@ def generate_students(session: Session, faker: Faker, count: int = 500) -> int:
         students.append(Student(user_id=user.id, **profile))
 
     session.add_all(students)
+    session.flush()
     return len(students)
 
 
@@ -273,7 +274,60 @@ def generate_internships(session: Session, faker: Faker, count: int = 100) -> in
         )
 
     session.add_all(internships)
+    session.flush()
     return len(internships)
+
+
+def generate_applications(session: Session) -> int:
+    """Simulate 3 months of application history.
+
+    - Randomly selects 30% of students (~150 out of 500)
+    - Each selected student gets 1-3 random internship applications
+    - 40% selected, 60% pending
+    - created_at is a random datetime within the last 90 days
+    - Scores are 0.0 (pre-engine historical records)
+    """
+    student_ids = [sid for (sid,) in session.query(Student.id).all()]
+    internship_ids = [iid for (iid,) in session.query(Internship.id).all()]
+
+    selected_students = random.sample(
+        student_ids, k=int(len(student_ids) * 0.30)
+    )
+
+    now = datetime.utcnow()
+    applications: list[Application] = []
+
+    for sid in selected_students:
+        n_apps = random.randint(1, 3)
+        chosen_internships = random.sample(
+            internship_ids, k=min(n_apps, len(internship_ids))
+        )
+
+        for iid in chosen_internships:
+            if random.random() < 0.40:
+                app_status = ApplicationStatus.SELECTED
+            else:
+                app_status = ApplicationStatus.PENDING
+
+            applied_at = now - timedelta(days=random.randint(0, 90))
+
+            applications.append(
+                Application(
+                    student_id=sid,
+                    internship_id=iid,
+                    status=app_status,
+                    content_score=0.0,
+                    collaborative_score=0.0,
+                    affirmative_score=0.0,
+                    final_score=0.0,
+                    score_breakdown={},
+                    created_at=applied_at,
+                    updated_at=applied_at,
+                )
+            )
+
+    session.add_all(applications)
+    return len(applications)
 
 
 def main() -> None:
@@ -285,12 +339,14 @@ def main() -> None:
     try:
         student_count = generate_students(session=session, faker=faker, count=500)
         internship_count = generate_internships(session=session, faker=faker, count=100)
+        application_count = generate_applications(session=session)
 
         session.commit()
 
         print("Data generation complete.")
         print(f"Inserted students: {student_count}")
         print(f"Inserted internships: {internship_count}")
+        print(f"Inserted applications: {application_count}")
     except Exception as exc:
         session.rollback()
         print(f"Data generation failed: {exc}")

@@ -7,4 +7,5 @@ backend/venv/
 
 __pycache__/
 *.pyc
+*.joblib
 .pytest_cache/

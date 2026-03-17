@@ -40,7 +40,7 @@ def create_internship(
 @router.get("/", response_model=list[InternshipResponse])
 def list_active_internships(
 	skip: int = Query(default=0, ge=0),
-	limit: int = Query(default=10, ge=1, le=100),
+	limit: int = Query(default=10, ge=1, le=500),
 	sector: str | None = Query(default=None),
 	state: str | None = Query(default=None),
 	db: Session = Depends(get_db),

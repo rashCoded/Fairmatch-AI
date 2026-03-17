@@ -15,7 +15,12 @@ def send_otp_email(to_email: str, otp: str):
     If SMTP_USER is not configured in settings, it prints the OTP to the console
     for development purposes.
     """
-    if settings.SMTP_USER is None:
+    smtp_user = settings.SMTP_USER or settings.MAIL_USERNAME
+    smtp_password = settings.SMTP_PASSWORD or settings.MAIL_PASSWORD
+    smtp_host = settings.SMTP_HOST
+    from_email = settings.EMAILS_FROM_EMAIL or smtp_user
+
+    if smtp_user is None:
         print("---------------------------------------------------------")
         print(f"[{settings.PROJECT_NAME}] DEV MODE - OTP for {to_email}: {otp}")
         print("---------------------------------------------------------")
@@ -23,11 +28,11 @@ def send_otp_email(to_email: str, otp: str):
 
     try:
         missing = []
-        if not settings.SMTP_HOST:
+        if not smtp_host:
             missing.append("SMTP_HOST")
-        if settings.SMTP_PASSWORD is None:
+        if smtp_password is None:
             missing.append("SMTP_PASSWORD")
-        if settings.EMAILS_FROM_EMAIL is None:
+        if from_email is None:
             missing.append("EMAILS_FROM_EMAIL")
 
         if missing:
@@ -36,19 +41,19 @@ def send_otp_email(to_email: str, otp: str):
             )
 
         msg = MIMEMultipart()
-        msg["From"] = f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>"
+        msg["From"] = f"{settings.EMAILS_FROM_NAME} <{from_email}>"
         msg["To"] = to_email
         msg["Subject"] = "Your Verification Code"
 
         body = f"Your verification code for {settings.PROJECT_NAME} is: {otp}\n\nThis code expires in {settings.OTP_EXPIRE_MINUTES} minutes."
         msg.attach(MIMEText(body, "plain"))
 
-        server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT)
+        server = smtplib.SMTP(smtp_host, settings.SMTP_PORT)
         if settings.SMTP_TLS:
             server.starttls()
         
-        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-        server.sendmail(settings.EMAILS_FROM_EMAIL, to_email, msg.as_string())
+        server.login(smtp_user, smtp_password)
+        server.sendmail(str(from_email), to_email, msg.as_string())
         server.quit()
     except Exception as exc:
         logger.exception("Failed to send OTP email to %s", to_email)

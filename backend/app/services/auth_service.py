@@ -14,6 +14,7 @@ from app.core.security import (
     verify_password,
 )
 from app.db.database import get_db
+from app.db import base  # noqa: F401  # Ensure all model mappers are registered for scripts.
 from app.models.user import User, UserRole
 from app.services.email_service import send_otp_email
 

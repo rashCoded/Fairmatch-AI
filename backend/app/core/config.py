@@ -1,7 +1,12 @@
 
 from typing import List, Union
+from pathlib import Path
+
 from pydantic import AnyHttpUrl, EmailStr, PostgresDsn, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -49,6 +54,9 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str | None = None
     EMAILS_FROM_EMAIL: EmailStr | None = None
     EMAILS_FROM_NAME: str = "FairMatch AI"
+    # Backward-compatible aliases for older env naming.
+    MAIL_USERNAME: str | None = None
+    MAIL_PASSWORD: str | None = None
 
     # ML Weights - Hybrid Recommendation Engine
     CONTENT_WEIGHT: float = 0.50
@@ -56,7 +64,7 @@ class Settings(BaseSettings):
     AFFIRMATIVE_WEIGHT: float = 0.20
 
     model_config = SettingsConfigDict(
-        env_file=".env", 
+        env_file=str(BASE_DIR / ".env"),
         env_file_encoding="utf-8", 
         case_sensitive=True,
         extra="ignore"

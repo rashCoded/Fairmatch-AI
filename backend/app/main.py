@@ -5,6 +5,7 @@ from fastapi.openapi.utils import get_openapi
 from app.db import base  # noqa - ensures all models are loaded before mapper config
 
 from app.api.v1.endpoints.admin import router as admin_router
+from app.api.v1.endpoints.applications import router as applications_router
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.internships import router as internships_router
 from app.api.v1.endpoints.recommend import router as recommend_router
@@ -47,15 +48,17 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-# Set all CORS enabled origins
-if settings.BACKEND_CORS_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# Always allow local frontend origins for development and normalize any configured origins.
+cors_origins = {str(origin).rstrip("/") for origin in settings.BACKEND_CORS_ORIGINS}
+cors_origins.update({"http://localhost:3000", "http://127.0.0.1:3000"})
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=sorted(cors_origins),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health", tags=["health"])
@@ -77,5 +80,6 @@ def health_check():
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(students_router, prefix=settings.API_V1_STR)
 app.include_router(internships_router, prefix=settings.API_V1_STR)
+app.include_router(applications_router, prefix=settings.API_V1_STR)
 app.include_router(admin_router, prefix=f"{settings.API_V1_STR}/admin")
 app.include_router(recommend_router, prefix=f"{settings.API_V1_STR}/recommend")

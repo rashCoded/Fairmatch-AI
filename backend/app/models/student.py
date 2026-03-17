@@ -36,3 +36,4 @@ class Student(Base):
     # Relationships
     user = relationship("User", back_populates="student")
     applications = relationship("Application", back_populates="student")
+    recommendations = relationship("Recommendation", back_populates="student")

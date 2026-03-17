@@ -30,6 +30,7 @@ class Internship(Base):
 
     # Relationships
     applications = relationship("Application", back_populates="internship")
+    recommendations = relationship("Recommendation", back_populates="internship")
 
     @property
     def available_seats(self):
